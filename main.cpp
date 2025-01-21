@@ -9,7 +9,7 @@
 using namespace std;
 
 #define FILENAME "resources/cat.png"
-#define SIZE 512
+#define SIZE 16
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
 #define SIZE2 SIZE*SIZE
@@ -117,33 +117,33 @@ void transformRow(array<complex<float>,SIZE2> * pixels, const int y, const bool 
     }
 }
 
-ROWVEC * fftRow(ROWVEC * row, const bool invert = false) {
+ROWVEC fftRow(ROWVEC row, const bool invert = false) {
 
-    const auto n = row->size();
+    const auto n = row.size();
     if(n == 1) return row;
     const auto half = n / 2;
     const complex<float> i_complex = - complex<float>(0, 1);
 
     const complex<float> o = pow(E_COMPLEX, (2.f * M_PIf32 * i_complex) / static_cast<float>(n));
 
-    const auto even = new vector<complex<float>>(half);
-    const auto odd = new vector<complex<float>>(half + 1);
+    auto even =  vector<complex<float>>(half);
+    auto odd =  vector<complex<float>>(half + 1);
 
     for (int i = 0; i < n; i+=2) {
-        even->push_back(row->at(i));
+        even.push_back(row[i]);
     }
     for (int i = 1; i < n - 1; i+=2) {
-        odd->push_back(row->at(i));
+        odd.push_back(row[i]);
     }
 
     const auto transformOdd = fftRow(odd, invert);
     const auto transformEven = fftRow(even, invert);
 
-    const auto transform = new ROWVEC(n);
+    auto transform = ROWVEC(n);
 
     for (int i = 0; i < half; ++i) {
-        row->at(i) = transformEven->at(i) + pow(o,i) * transformOdd->at(i);
-        row->at(i + half) = transformEven->at(i) - pow(o,i) * transformOdd->at(i);
+        transform[i] = transform.at(i) + pow(o,i) * transform.at(i);
+        transform[i + half] = transform.at(i) - pow(o,i) * transform.at(i);
     }
 
     return transform;
@@ -156,10 +156,9 @@ void fft(IMGARRAY * data, const bool invert = false) {
         ROWVEC row(start,start + SIZE);
 
         row.insert(row.end(),start,start+SIZE);
-        //const auto tRow = fftRow(row,invert);
+        const auto tRow = fftRow(row,invert);
 
-        copy(row.data(),row.data() + SIZE,data->data() + i * SIZE);
-        //delete tRow;
+        copy(tRow.data(),tRow.data() + SIZE,data->data() + i * SIZE);
         
     }
 }
@@ -288,7 +287,7 @@ int main()
 
     SDL_Window * window = SDL_CreateWindow("Window", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN);
     SDL_Renderer * renderer = SDL_CreateRenderer(window, -1, 0);
-    auto * labels = new Labels(renderer);
+    const auto * labels = new Labels(renderer);
 
     SDL_Surface * sampleImage = IMG_Load(FILENAME);
     SDL_Surface * converted = SDL_ConvertSurfaceFormat(sampleImage, SDL_PIXELFORMAT_RGBA8888, 0);
@@ -304,7 +303,7 @@ int main()
     //rowsToColumns(&transformedArray, &columns);
     //transformData(&columns);
 
-    SDL_Surface * transformedSurface = fftShift(&transformedArray,0.01);
+    SDL_Surface * transformedSurface = fftShift(&transformedArray,1);
     SDL_Texture * transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
 
 
