@@ -8,8 +8,8 @@
 #include <vector>
 using namespace std;
 
-#define FILENAME "resources/cat.png"
-#define SIZE 16
+#define FILENAME "resources/cat128.png"
+#define SIZE 128
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
 #define SIZE2 SIZE*SIZE
