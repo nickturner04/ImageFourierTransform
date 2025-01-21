@@ -7,8 +7,8 @@
 #include <vector>
 using namespace std;
 
-#define FILENAME "resources/clown.png"
-#define SIZE 256
+#define FILENAME "resources/cat.png"
+#define SIZE 512
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
 #define SIZE2 SIZE*SIZE
@@ -133,8 +133,8 @@ float colorToFloat(const Uint8 color) {
     return static_cast<float>(color) / 255.f;
 }
 
-uint8_t floatToColor(float color, float scalar = 1.f) {
-    return static_cast<uint8_t>(255.f * min(color * scalar, 1.f));
+uint8_t floatToColor(float color) {
+    return static_cast<uint8_t>(255.f * min(color, 1.f));
 }
 
 array<complex<float>,SIZE2> surfaceToArray(const SDL_Surface * surface) {
@@ -161,6 +161,13 @@ void setPixel(const SDL_Surface * surface, const int i, const float rawColor) {
     *pixel = SDL_MapRGB(surface->format,color,color,color);
 }
 
+void setPixel(const SDL_Surface * surface, const int x, const int y, const float rawColor) {
+    const auto pixel = static_cast<Uint32 *>(surface->pixels + y * surface->pitch + x * surface->format->BytesPerPixel);
+    const Uint8 color = floatToColor(rawColor);
+
+    *pixel = SDL_MapRGB(surface->format,color,color,color);
+}
+
 float logBase(float x, float base) {
     return logf(x) / logf(base);
 }
@@ -168,12 +175,56 @@ float logBase(float x, float base) {
 SDL_Surface * arrayToSurface(const array<complex<float>,SIZE2> * data, const float scale = 1.f) {
     SDL_Surface * surface = SDL_CreateRGBSurfaceWithFormat(0, SIZE, SIZE, 32, SDL_PIXELFORMAT_ARGB8888);
     for (int i = 0; i < SIZE2; ++i) {
-        const float rawColor = logBase(fabs(data->at(i)),scale);
+        const float rawColor = fabs(data->at(i)) * scale;
         setPixel(surface,i,rawColor);
     }
     return surface;
 
 }
+
+inline float getRawColor(const IMGARRAY * src, const int x, const int y, const float scale) {
+    return fabs(src->at(y * SIZE + x)) * scale;
+}
+
+SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
+    SDL_Surface * surface = SDL_CreateRGBSurfaceWithFormat(0, SIZE, SIZE, 32, SDL_PIXELFORMAT_ARGB8888);
+    constexpr auto l = SIZE / 2;
+    //first corner
+    for (int i = 0; i < l; ++i) {
+        for (int j = 0; j < l; ++j) {
+            const float col = getRawColor(src, i + l, j + l, scale);
+            setPixel(surface,i,j,col);
+            //dst->at(j * SIZE + i) = src->at((j + l ) * SIZE + (i + l ));
+        }
+    }
+    //Second corner
+    for (int i = l; i < SIZE; ++i) {
+        for (int j = 0; j < l; ++j) {
+            const float col = getRawColor(src, i + l, j + l - 1, scale);
+            setPixel(surface,i,j,col);
+            //dst->at(j * SIZE + i) = src->at((j + l - 1) * SIZE + (i + l ));
+        }
+    }
+    //Third corner
+    for (int i = 0; i < l; ++i) {
+        for (int j = l; j < SIZE; ++j) {
+            const float col = getRawColor(src, i + l, j - l, scale);
+            setPixel(surface,i,j,col);
+            //dst->at(j * SIZE + i) = src->at((j - l) * SIZE + (i + l));
+        }
+    }
+    //Fourth corner
+    for (int i = l; i < SIZE; ++i) {
+        for (int j = l; j < SIZE; ++j) {
+            const float col = getRawColor(src, i - l, j - l, scale);
+            setPixel(surface,i,j,col);
+            //dst->at(j * SIZE + i) = src->at((j - l) * SIZE + (i - l));
+        }
+    }
+
+    return surface;
+}
+
 
 int main()
 {
@@ -181,6 +232,7 @@ int main()
     SDL_Init(SDL_INIT_EVERYTHING);
     IMG_Init(IMG_INIT_PNG);
     TTF_Init();
+
 
     gFont = TTF_OpenFont("resources/sampleFont.ttf", 32);
 
@@ -190,23 +242,19 @@ int main()
 
     SDL_Surface * sampleImage = IMG_Load(FILENAME);
     SDL_Surface * converted = SDL_ConvertSurfaceFormat(sampleImage, SDL_PIXELFORMAT_RGBA8888, 0);
+    SDL_FreeSurface(sampleImage);
     //turn surface into a texture in order to display it on screen
     SDL_Texture * texture = SDL_CreateTextureFromSurface(renderer, converted);
 
     auto complexArray = surfaceToArray(converted);
+    SDL_FreeSurface(converted);
     auto transformedArray = complexArray;
     transformData(&transformedArray);
     IMGARRAY columns;
     rowsToColumns(&transformedArray, &columns);
     transformData(&columns);
-    /*
-    transformData(&columns, true);
-    IMGARRAY rows;
-    rowsToColumns(&columns, &rows);
-    transformData(&rows,true);
-    */
 
-    SDL_Surface * transformedSurface = arrayToSurface(&columns, 10);
+    SDL_Surface * transformedSurface = fftShift(&columns,0.01);
     SDL_Texture * transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
 
 
@@ -267,5 +315,6 @@ int main()
     }
     IMG_Quit();
     SDL_Quit();
+
     return 0;
 }
