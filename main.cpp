@@ -126,13 +126,16 @@ ROWVEC fftRow(ROWVEC row, const bool invert = false) {
 
     const complex<float> o = pow(E_COMPLEX, (2.f * M_PIf32 * i_complex) / static_cast<float>(n));
 
-    auto even =  vector<complex<float>>(half);
-    auto odd =  vector<complex<float>>(half + 1);
+    auto even =  vector<complex<float>>();
+    auto odd =  vector<complex<float>>();
+
+    even.reserve(half);
+    odd.reserve(half);
 
     for (int i = 0; i < n; i+=2) {
         even.push_back(row[i]);
     }
-    for (int i = 1; i < n - 1; i+=2) {
+    for (int i = 1; i < n; i+=2) {
         odd.push_back(row[i]);
     }
 
@@ -155,11 +158,11 @@ void fft(IMGARRAY * data, const bool invert = false) {
         const auto start = data->data() + i * SIZE;
         ROWVEC row(start,start + SIZE);
 
-        row.insert(row.end(),start,start+SIZE);
         const auto tRow = fftRow(row,invert);
 
         copy(tRow.data(),tRow.data() + SIZE,data->data() + i * SIZE);
-        
+
+        cout << "Transformed Row: " << i << "/" << SIZE << "\n";
     }
 }
 
