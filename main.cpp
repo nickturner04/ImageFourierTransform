@@ -7,8 +7,8 @@
 #include <vector>
 using namespace std;
 
-#define FILENAME "resources/cat128.png"
-#define SIZE 128
+#define FILENAME "resources/clown.png"
+#define SIZE 256
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
 #define SIZE2 SIZE*SIZE
@@ -161,10 +161,14 @@ void setPixel(const SDL_Surface * surface, const int i, const float rawColor) {
     *pixel = SDL_MapRGB(surface->format,color,color,color);
 }
 
+float logBase(float x, float base) {
+    return logf(x) / logf(base);
+}
+
 SDL_Surface * arrayToSurface(const array<complex<float>,SIZE2> * data, const float scale = 1.f) {
     SDL_Surface * surface = SDL_CreateRGBSurfaceWithFormat(0, SIZE, SIZE, 32, SDL_PIXELFORMAT_ARGB8888);
     for (int i = 0; i < SIZE2; ++i) {
-        const float rawColor = fabs(data->at(i)) * scale;
+        const float rawColor = logBase(fabs(data->at(i)),scale);
         setPixel(surface,i,rawColor);
     }
     return surface;
@@ -195,10 +199,14 @@ int main()
     IMGARRAY columns;
     rowsToColumns(&transformedArray, &columns);
     transformData(&columns);
-    //auto reverseArray = transformedArray;
-    //transformData(&reverseArray, true);
+    /*
+    transformData(&columns, true);
+    IMGARRAY rows;
+    rowsToColumns(&columns, &rows);
+    transformData(&rows,true);
+    */
 
-    SDL_Surface * transformedSurface = arrayToSurface(&columns, 0.01f);
+    SDL_Surface * transformedSurface = arrayToSurface(&columns, 10);
     SDL_Texture * transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
 
 
@@ -229,6 +237,20 @@ int main()
                 SDL_RenderReadPixels(renderer,NULL,formatEnum,screenShot->pixels,screenShot->pitch);
                 IMG_SavePNG(screenShot, "output/screenshot.png");
             }
+            else if(event.type == SDL_KEYUP) {
+                switch (event.key.keysym.sym) {
+                    default: break;
+                    case SDLK_s:
+                        cout << "Enter Log Base for Display: " << endl;
+                        float scale;
+                        cin >> scale;
+                        SDL_FreeSurface(transformedSurface);
+                        transformedSurface = arrayToSurface(&columns, scale);
+                        SDL_DestroyTexture(transformedTexture);
+                        transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
+                        break;
+                }
+            }
         }
         SDL_RenderClear(renderer);
         SDL_SetRenderDrawColor(renderer, 255, 0, 255, 255);
@@ -238,7 +260,7 @@ int main()
 
         barChart.draw(renderer,&complexArray);
         barChart2.draw(renderer,&transformedArray);
-        barChart3.draw(renderer,&columns,0.01f);
+        barChart3.draw(renderer,&columns);
 
         labels->draw();
         SDL_RenderPresent(renderer);
