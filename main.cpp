@@ -1,4 +1,5 @@
 #include <array>
+#include <complex.h>
 #include <complex>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -12,7 +13,9 @@ using namespace std;
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
 #define SIZE2 SIZE*SIZE
+#define ROWVEC vector<complex<float>>
 #define IMGARRAY array<complex<float>,SIZE2>
+#define E_COMPLEX complex<float>(M_Ef32, 0)
 
 TTF_Font *gFont;
 
@@ -86,8 +89,8 @@ void transformRow(array<complex<float>,SIZE2> * pixels, const int y, const bool 
 
     //Make a new array to hold the unchanged row
     auto X =  array<complex<float>, SIZE> ();
-    auto start = pixels->data() + y * SIZE;
-    auto end = start + SIZE;
+    const auto start = pixels->data() + y * SIZE;
+    const auto end = start + SIZE;
 
     //Copy the row to this new array
     copy(start, end, X.begin());
@@ -111,6 +114,53 @@ void transformRow(array<complex<float>,SIZE2> * pixels, const int y, const bool 
 
         }
         pixels->at(SIZE * y + k) = total * scale;
+    }
+}
+
+ROWVEC * fftRow(ROWVEC * row, const bool invert = false) {
+
+    const auto n = row->size();
+    if(n == 1) return row;
+    const auto half = n / 2;
+    const complex<float> i_complex = - complex<float>(0, 1);
+
+    const complex<float> o = pow(E_COMPLEX, (2.f * M_PIf32 * i_complex) / static_cast<float>(n));
+
+    const auto even = new vector<complex<float>>(half);
+    const auto odd = new vector<complex<float>>(half + 1);
+
+    for (int i = 0; i < n; i+=2) {
+        even->push_back(row->at(i));
+    }
+    for (int i = 1; i < n - 1; i+=2) {
+        odd->push_back(row->at(i));
+    }
+
+    const auto transformOdd = fftRow(odd, invert);
+    const auto transformEven = fftRow(even, invert);
+
+    const auto transform = new ROWVEC(n);
+
+    for (int i = 0; i < half; ++i) {
+        row->at(i) = transformEven->at(i) + pow(o,i) * transformOdd->at(i);
+        row->at(i + half) = transformEven->at(i) - pow(o,i) * transformOdd->at(i);
+    }
+
+    return transform;
+
+}
+
+void fft(IMGARRAY * data, const bool invert = false) {
+    for (int i = 0; i < SIZE; ++i) {
+        const auto start = data->data() + i * SIZE;
+        ROWVEC row(start,start + SIZE);
+
+        row.insert(row.end(),start,start+SIZE);
+        //const auto tRow = fftRow(row,invert);
+
+        copy(row.data(),row.data() + SIZE,data->data() + i * SIZE);
+        //delete tRow;
+        
     }
 }
 
@@ -249,12 +299,12 @@ int main()
     auto complexArray = surfaceToArray(converted);
     SDL_FreeSurface(converted);
     auto transformedArray = complexArray;
-    transformData(&transformedArray);
-    IMGARRAY columns;
-    rowsToColumns(&transformedArray, &columns);
-    transformData(&columns);
+    fft(&transformedArray);
+    //IMGARRAY columns;
+    //rowsToColumns(&transformedArray, &columns);
+    //transformData(&columns);
 
-    SDL_Surface * transformedSurface = fftShift(&columns,0.01);
+    SDL_Surface * transformedSurface = fftShift(&transformedArray,0.01);
     SDL_Texture * transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
 
 
@@ -293,7 +343,7 @@ int main()
                         float scale;
                         cin >> scale;
                         SDL_FreeSurface(transformedSurface);
-                        transformedSurface = arrayToSurface(&columns, scale);
+                        //transformedSurface = arrayToSurface(&columns, scale);
                         SDL_DestroyTexture(transformedTexture);
                         transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
                         break;
@@ -308,7 +358,7 @@ int main()
 
         barChart.draw(renderer,&complexArray);
         barChart2.draw(renderer,&transformedArray);
-        barChart3.draw(renderer,&columns);
+        //barChart3.draw(renderer,&columns);
 
         labels->draw();
         SDL_RenderPresent(renderer);
