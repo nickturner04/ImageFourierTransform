@@ -7,8 +7,8 @@
 #include <vector>
 using namespace std;
 
-#define FILENAME "resources/cat.png"
-#define SIZE 512
+#define FILENAME "resources/cat128.png"
+#define SIZE 128
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
 #define SIZE2 SIZE*SIZE
@@ -60,7 +60,7 @@ struct BarChart {
     float height;
     float barWidth;
 
-    void draw(SDL_Renderer* renderer, const array<complex<float>,SIZE2> * data) {
+    void draw(SDL_Renderer* renderer, const array<complex<float>,SIZE2> * data, float scale = 1.f) {
         const auto n = data->size();
         //Draw Background
         const SDL_FRect rectangle = {position.x,position.y,barWidth * n,height};
@@ -71,7 +71,7 @@ struct BarChart {
         SDL_SetRenderDrawColor(renderer,255,255,255,255);
         for (auto i = 0; i < n; i++) {
             //get the abs of the complex number and clip to fit the chart
-            const float x = min(fabs(data->at(i)),1.2f);
+            const float x = min(fabs(data->at(i)) * scale,1.2f);
             SDL_FRect bar = {position.x + barWidth * i,position.y,barWidth,height * x};
             SDL_RenderFillRectF(renderer,&bar);
         }
@@ -161,10 +161,10 @@ void setPixel(const SDL_Surface * surface, const int i, const float rawColor) {
     *pixel = SDL_MapRGB(surface->format,color,color,color);
 }
 
-SDL_Surface * arrayToSurface(const array<complex<float>,SIZE2> * data) {
+SDL_Surface * arrayToSurface(const array<complex<float>,SIZE2> * data, const float scale = 1.f) {
     SDL_Surface * surface = SDL_CreateRGBSurfaceWithFormat(0, SIZE, SIZE, 32, SDL_PIXELFORMAT_ARGB8888);
     for (int i = 0; i < SIZE2; ++i) {
-        const float rawColor = fabs(data->at(i));
+        const float rawColor = fabs(data->at(i)) * scale;
         setPixel(surface,i,rawColor);
     }
     return surface;
@@ -193,20 +193,20 @@ int main()
     auto transformedArray = complexArray;
     transformData(&transformedArray);
     IMGARRAY columns;
-    rowsToColumns(&complexArray, &columns);
-    //transformData(&columns);
+    rowsToColumns(&transformedArray, &columns);
+    transformData(&columns);
     //auto reverseArray = transformedArray;
     //transformData(&reverseArray, true);
 
-    SDL_Surface * transformedSurface = arrayToSurface(&columns);
+    SDL_Surface * transformedSurface = arrayToSurface(&columns, 0.01f);
     SDL_Texture * transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
 
 
     SDL_Rect screen1 = {0,0,512,512};
     SDL_Rect screen2 = {512,0,512,512};
-    BarChart barChart = {0,512,64,4};
-    BarChart barChart2 = {0,512 + 128,64,4};
-    BarChart barChart3 = {0,512 + 256,64,4};
+    BarChart barChart = {0,512,64,1};
+    BarChart barChart2 = {0,512 + 128,64,1};
+    BarChart barChart3 = {0,512 + 256,64,1};
 
 
     labels->add("Raw Image",0,0);
@@ -238,7 +238,7 @@ int main()
 
         barChart.draw(renderer,&complexArray);
         barChart2.draw(renderer,&transformedArray);
-        barChart3.draw(renderer,&columns);
+        barChart3.draw(renderer,&columns,0.01f);
 
         labels->draw();
         SDL_RenderPresent(renderer);
