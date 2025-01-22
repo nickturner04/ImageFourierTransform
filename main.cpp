@@ -8,8 +8,8 @@
 #include <vector>
 using namespace std;
 
-#define FILENAME "resources/cat128.png"
-#define SIZE 128
+#define FILENAME "resources/cat.png"
+#define SIZE 512
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
 #define SIZE2 SIZE*SIZE
@@ -145,8 +145,8 @@ ROWVEC fftRow(ROWVEC row, const bool invert = false) {
     auto transform = ROWVEC(n);
 
     for (int i = 0; i < half; ++i) {
-        transform[i] = transform.at(i) + pow(o,i) * transform.at(i);
-        transform[i + half] = transform.at(i) - pow(o,i) * transform.at(i);
+        transform[i] = transformEven[i] + pow(o,i) * transformOdd[i];
+        transform[i + half] = transformEven[i] - pow(o,i) * transformOdd[i];
     }
 
     return transform;
@@ -173,10 +173,11 @@ void transformData(array<complex<float>,SIZE2> * data, const bool invert = false
     }
 }
 
-void rowsToColumns(const IMGARRAY * src, IMGARRAY * dst) {
+void rowsToColumns(IMGARRAY * data) {
+    const IMGARRAY temp = *data;
     for (int i = 0; i < SIZE; ++i) {
         for (int j = 0; j < SIZE; ++j) {
-            dst->at(i * SIZE + j) = src->at(j * SIZE + i);
+            data->at(i * SIZE + j) = temp[j * SIZE + i];
         }
     }
 }
@@ -302,11 +303,10 @@ int main()
     SDL_FreeSurface(converted);
     auto transformedArray = complexArray;
     fft(&transformedArray);
-    //IMGARRAY columns;
-    //rowsToColumns(&transformedArray, &columns);
-    //transformData(&columns);
+    rowsToColumns(&transformedArray);
+    fft(&transformedArray);
 
-    SDL_Surface * transformedSurface = fftShift(&transformedArray,1);
+    SDL_Surface * transformedSurface = fftShift(&transformedArray,0.01);
     SDL_Texture * transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
 
 
