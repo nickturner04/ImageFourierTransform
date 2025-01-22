@@ -62,6 +62,8 @@ struct BarChart {
     SDL_FPoint position;
     float height;
     float barWidth;
+    SDL_FRect displayRect;
+    SDL_Texture * texture = nullptr;
 
     void draw(SDL_Renderer* renderer, const array<complex<float>,SIZE2> * data, float scale = 1.f) {
         const auto n = data->size();
@@ -79,11 +81,39 @@ struct BarChart {
             SDL_RenderFillRectF(renderer,&bar);
         }
     }
+    void cacheTexture(SDL_Renderer * renderer, const IMGARRAY * data, const float scale = 1.f){
+        const auto n = static_cast<int>(data->size());
+        displayRect = { position.x,position.y,WINDOW_WIDTH,height};
+        if(texture == nullptr) {
+            texture = SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,static_cast<int>(barWidth) * WINDOW_WIDTH,static_cast<int>(height));
+        }
+        SDL_SetRenderTarget(renderer,texture);
+        //Fill Texture Black
+        SDL_SetRenderDrawColor(renderer,0,0,0,255);
+        SDL_RenderFillRectF(renderer,nullptr);
+
+        //Draw Data
+
+        for (int i = 0; i < n; ++i) {
+            SDL_SetRenderDrawColor(renderer,255,255,255,255);
+            float x = fabs(data->at(i)) * scale;
+            if(x > 1.f) {
+                SDL_SetRenderDrawColor(renderer,255,0,0,255);
+                x = 1.f;
+            }
+            SDL_FRect bar = {barWidth * i,0,barWidth,height * x};
+            SDL_RenderFillRectF(renderer,&bar);
+        }
+        SDL_SetRenderTarget(renderer,nullptr);
+    }
+    void drawCached(SDL_Renderer * renderer) const {
+        SDL_RenderCopyF(renderer,texture,nullptr,&displayRect);
+    }
 };
 
 
 void transformRow(array<complex<float>,SIZE2> * pixels, const int y, const bool invert = false) {
-    const complex<float> e_complex = complex<float>(M_E, 0);
+    const auto e_complex = complex<float>(M_E, 0);
     complex<float> i_complex = - complex<float>(0, 1);
     auto scale = 1.f;
 
@@ -122,7 +152,14 @@ ROWVEC fftRow(ROWVEC row, const bool invert = false) {
     const auto n = row.size();
     if(n == 1) return row;
     const auto half = n / 2;
-    const complex<float> i_complex = - complex<float>(0, 1);
+    complex<float> i_complex = - complex<float>(0, 1);
+    auto scale = 1.f;
+
+    if(invert) {
+        i_complex = complex<float>(0, 1);
+        scale = 1.f / static_cast<float>(n);
+
+    }
 
     const complex<float> o = pow(E_COMPLEX, (2.f * M_PIf32 * i_complex) / static_cast<float>(n));
 
@@ -134,9 +171,7 @@ ROWVEC fftRow(ROWVEC row, const bool invert = false) {
 
     for (int i = 0; i < n; i+=2) {
         even.push_back(row[i]);
-    }
-    for (int i = 1; i < n; i+=2) {
-        odd.push_back(row[i]);
+        odd.push_back(row[i+1]);
     }
 
     const auto transformOdd = fftRow(odd, invert);
@@ -145,8 +180,8 @@ ROWVEC fftRow(ROWVEC row, const bool invert = false) {
     auto transform = ROWVEC(n);
 
     for (int i = 0; i < half; ++i) {
-        transform[i] = transformEven[i] + pow(o,i) * transformOdd[i];
-        transform[i + half] = transformEven[i] - pow(o,i) * transformOdd[i];
+        transform[i] = (transformEven[i] + pow(o,i) * transformOdd[i]);
+        transform[i + half] = (transformEven[i] - pow(o,i) * transformOdd[i]);
     }
 
     return transform;
@@ -235,8 +270,8 @@ SDL_Surface * arrayToSurface(const array<complex<float>,SIZE2> * data, const flo
 
 }
 
-inline float getRawColor(const IMGARRAY * src, const int x, const int y, const float scale) {
-    return fabs(src->at(y * SIZE + x)) * scale;
+inline float getRawColor(const IMGARRAY * src, const int x, const int y) {
+    return fabs(src->at(y * SIZE + x));
 }
 
 SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
@@ -245,7 +280,7 @@ SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
     //first corner
     for (int i = 0; i < l; ++i) {
         for (int j = 0; j < l; ++j) {
-            const float col = getRawColor(src, i + l, j + l, scale);
+            const float col = getRawColor(src, i + l, j + l) * scale;
             setPixel(surface,i,j,col);
             //dst->at(j * SIZE + i) = src->at((j + l ) * SIZE + (i + l ));
         }
@@ -253,7 +288,7 @@ SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
     //Second corner
     for (int i = l; i < SIZE; ++i) {
         for (int j = 0; j < l; ++j) {
-            const float col = getRawColor(src, i + l, j + l - 1, scale);
+            const float col = getRawColor(src, i + l, j + l - 1) * scale;
             setPixel(surface,i,j,col);
             //dst->at(j * SIZE + i) = src->at((j + l - 1) * SIZE + (i + l ));
         }
@@ -261,7 +296,7 @@ SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
     //Third corner
     for (int i = 0; i < l; ++i) {
         for (int j = l; j < SIZE; ++j) {
-            const float col = getRawColor(src, i + l, j - l, scale);
+            const float col = getRawColor(src, i + l, j - l) * scale;
             setPixel(surface,i,j,col);
             //dst->at(j * SIZE + i) = src->at((j - l) * SIZE + (i + l));
         }
@@ -269,7 +304,7 @@ SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
     //Fourth corner
     for (int i = l; i < SIZE; ++i) {
         for (int j = l; j < SIZE; ++j) {
-            const float col = getRawColor(src, i - l, j - l, scale);
+            const float col = getRawColor(src, i - l, j - l) * scale;
             setPixel(surface,i,j,col);
             //dst->at(j * SIZE + i) = src->at((j - l) * SIZE + (i - l));
         }
@@ -289,6 +324,10 @@ int main()
 
     gFont = TTF_OpenFont("resources/sampleFont.ttf", 32);
 
+    BarChart barChart = {0,512,64,1};
+    BarChart barChart2 = {0,512 + 128,64,1};
+    BarChart barChart3 = {0,512 + 256,64,1};
+
     SDL_Window * window = SDL_CreateWindow("Window", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN);
     SDL_Renderer * renderer = SDL_CreateRenderer(window, -1, 0);
     const auto * labels = new Labels(renderer);
@@ -299,29 +338,32 @@ int main()
     //turn surface into a texture in order to display it on screen
     SDL_Texture * texture = SDL_CreateTextureFromSurface(renderer, converted);
 
-    auto complexArray = surfaceToArray(converted);
+    auto transformedArray = surfaceToArray(converted);
+    barChart.cacheTexture(renderer,&transformedArray);
     SDL_FreeSurface(converted);
-    auto transformedArray = complexArray;
+    //auto transformedArray = complexArray;
     fft(&transformedArray);
     rowsToColumns(&transformedArray);
     fft(&transformedArray);
 
-    SDL_Surface * transformedSurface = fftShift(&transformedArray,0.01);
+
+    float scale = 0.01f;
+    barChart2.cacheTexture(renderer,&transformedArray,scale);
+    SDL_Surface * transformedSurface = fftShift(&transformedArray,scale);
     SDL_Texture * transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
 
 
     SDL_Rect screen1 = {0,0,512,512};
     SDL_Rect screen2 = {512,0,512,512};
-    BarChart barChart = {0,512,64,1};
-    BarChart barChart2 = {0,512 + 128,64,1};
-    BarChart barChart3 = {0,512 + 256,64,1};
+
 
 
     labels->add("Raw Image",0,0);
     labels->add("Transformed Image",512,0);
-    labels->add("Rows",0,512);
-    labels->add("Transformed Rows(Clipped)",0,512 + 128);
-    labels->add("Transformed Rows and Columns",0,512 + 256);
+    labels->add("Bar Chart:(Raw Image)",0,512);
+    labels->add("Controls:",0,512 + 256);
+    labels->add("S: Enter Scale Factor",0,512+256 + 16);
+    labels->add("I: Inverse Fourier Transform",0,512 + 256 + 32);
 
     bool running =true;
     while (running) {
@@ -341,25 +383,33 @@ int main()
                 switch (event.key.keysym.sym) {
                     default: break;
                     case SDLK_s:
-                        cout << "Enter Log Base for Display: " << endl;
-                        float scale;
+                        cout << "Enter Scale for Display: " << endl;
                         cin >> scale;
                         SDL_FreeSurface(transformedSurface);
-                        //transformedSurface = arrayToSurface(&columns, scale);
+                        transformedSurface = fftShift(&transformedArray, scale);
                         SDL_DestroyTexture(transformedTexture);
                         transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
                         break;
+                    case SDLK_i:
+                        cout << "Inverting Transformed image" << endl;
+                        transformData(&transformedArray,true);
+                        rowsToColumns(&transformedArray);
+                        transformData(&transformedArray,true);
+                        SDL_FreeSurface(transformedSurface);
+                        transformedSurface = arrayToSurface(&transformedArray, 1);
+                        SDL_DestroyTexture(transformedTexture);
+                        transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
                 }
             }
         }
         SDL_RenderClear(renderer);
-        SDL_SetRenderDrawColor(renderer, 255, 0, 255, 255);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, NULL);
         SDL_RenderCopy(renderer,texture,NULL,&screen1);
         SDL_RenderCopy(renderer,transformedTexture,NULL,&screen2);
 
-        barChart.draw(renderer,&complexArray);
-        barChart2.draw(renderer,&transformedArray);
+        barChart.drawCached(renderer);
+        barChart2.drawCached(renderer);
         //barChart3.draw(renderer,&columns);
 
         labels->draw();
