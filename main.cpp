@@ -9,6 +9,7 @@
 using namespace std;
 
 #define FILENAME "resources/cat.png"
+#define KERNELNAME = "resources/kernel/box.png"
 #define SIZE 512
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
@@ -225,10 +226,9 @@ uint8_t floatToColor(float color) {
     return static_cast<uint8_t>(255.f * min(color, 1.f));
 }
 
-array<complex<float>,SIZE2> surfaceToArray(const SDL_Surface * surface) {
-    array<complex<float>,SIZE2> result;
-
-    for (size_t i = 0; i < result.size(); ++i) {
+void surfaceToArray(const SDL_Surface * surface, IMGARRAY * data) {
+    const auto n = data->size();
+    for (size_t i = 0; i < n; ++i) {
         void * p = surface->pixels + i * sizeof(Uint32);
         const auto *pixel = static_cast<Uint32 *>(p);
         //Cast the void pointer to a Uint32 pointer to avoid throwing a compiler error
@@ -237,9 +237,8 @@ array<complex<float>,SIZE2> surfaceToArray(const SDL_Surface * surface) {
         Uint8 r, g, b;
         SDL_GetRGB(*pixel ,surface->format, &r, &g, &b);
         //Discard green and blue as the image is greyscale
-        result[i] = complex<float>(colorToFloat(r), 0);
+        data->at(i) = complex<float>(colorToFloat(r), 0);
     }
-    return result;
 }
 
 void setPixel(const SDL_Surface * surface, const int i, const float rawColor) {
@@ -313,6 +312,13 @@ SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
     return surface;
 }
 
+void convolve(IMGARRAY * data ) {
+    SDL_Surface * kernelImage = IMG_Load(FILENAME);
+    SDL_Surface * converted = SDL_ConvertSurfaceFormat(kernelImage, SDL_PIXELFORMAT_RGBA8888, 0);
+    SDL_FreeSurface(kernelImage);
+    //auto kernel = surfaceToArray(kernelImage);
+}
+
 
 int main()
 {
@@ -338,7 +344,8 @@ int main()
     //turn surface into a texture in order to display it on screen
     SDL_Texture * texture = SDL_CreateTextureFromSurface(renderer, converted);
 
-    auto transformedArray = surfaceToArray(converted);
+    IMGARRAY transformedArray;
+    surfaceToArray(converted,&transformedArray);
     barChart.cacheTexture(renderer,&transformedArray);
     SDL_FreeSurface(converted);
     //auto transformedArray = complexArray;
