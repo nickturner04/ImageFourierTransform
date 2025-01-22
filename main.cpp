@@ -9,7 +9,7 @@
 using namespace std;
 
 #define FILENAME "resources/cat.png"
-#define KERNELNAME = "resources/kernel/box.png"
+#define KERNELNAME "resources/kernel/box.png"
 #define SIZE 512
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
@@ -148,19 +148,13 @@ void transformRow(array<complex<float>,SIZE2> * pixels, const int y, const bool 
     }
 }
 
-ROWVEC fftRow(ROWVEC row, const bool invert = false) {
+ROWVEC fftRow(ROWVEC row) {
 
     const auto n = row.size();
     if(n == 1) return row;
     const auto half = n / 2;
     complex<float> i_complex = - complex<float>(0, 1);
-    auto scale = 1.f;
 
-    if(invert) {
-        i_complex = complex<float>(0, 1);
-        scale = 1.f / static_cast<float>(n);
-
-    }
 
     const complex<float> o = pow(E_COMPLEX, (2.f * M_PIf32 * i_complex) / static_cast<float>(n));
 
@@ -175,8 +169,8 @@ ROWVEC fftRow(ROWVEC row, const bool invert = false) {
         odd.push_back(row[i+1]);
     }
 
-    const auto transformOdd = fftRow(odd, invert);
-    const auto transformEven = fftRow(even, invert);
+    const auto transformOdd = fftRow(odd);
+    const auto transformEven = fftRow(even);
 
     auto transform = ROWVEC(n);
 
@@ -186,7 +180,41 @@ ROWVEC fftRow(ROWVEC row, const bool invert = false) {
     }
 
     return transform;
+}
 
+ROWVEC fftiRow(ROWVEC row) {
+
+    const auto n = row.size();
+    if(n == 1) return row;
+    const auto half = n / 2;
+    complex<float> i_complex = complex<float>(0, 1);
+    const auto scale = 1.f / static_cast<float>(n);
+
+
+    const complex<float> o = pow(E_COMPLEX, (2.f * M_PIf32 * i_complex) / static_cast<float>(n));
+
+    auto even =  vector<complex<float>>();
+    auto odd =  vector<complex<float>>();
+
+    even.reserve(half);
+    odd.reserve(half);
+
+    for (int i = 0; i < n; i+=2) {
+        even.push_back(row[i]);
+        odd.push_back(row[i+1]);
+    }
+
+    const auto transformOdd = fftiRow(odd);
+    const auto transformEven = fftiRow(even);
+
+    auto transform = ROWVEC(n);
+
+    for (int i = 0; i < half; ++i) {
+        transform[i] = (transformEven[i] + pow(o,i) * transformOdd[i]);
+        transform[i + half] = (transformEven[i] - pow(o,i) * transformOdd[i]);
+    }
+
+    return transform;
 }
 
 void fft(IMGARRAY * data, const bool invert = false) {
@@ -194,7 +222,17 @@ void fft(IMGARRAY * data, const bool invert = false) {
         const auto start = data->data() + i * SIZE;
         ROWVEC row(start,start + SIZE);
 
-        const auto tRow = fftRow(row,invert);
+        ROWVEC tRow;
+        if(invert) {
+            tRow = fftiRow(row);
+            for (auto & j : tRow) {
+                j *= 1.f/ static_cast<float>(SIZE);
+            }
+        }
+        else {
+            tRow = fftRow(row);
+        }
+        //const auto tRow = invert ? fftiRow(row) : fftRow(row);
 
         copy(tRow.data(),tRow.data() + SIZE,data->data() + i * SIZE);
 
@@ -216,6 +254,12 @@ void rowsToColumns(IMGARRAY * data) {
             data->at(i * SIZE + j) = temp[j * SIZE + i];
         }
     }
+}
+
+void fullTransform(IMGARRAY * data, const bool invert = false) {
+    fft(data, invert);
+    rowsToColumns(data);
+    fft(data, invert);
 }
 
 float colorToFloat(const Uint8 color) {
@@ -313,10 +357,17 @@ SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
 }
 
 void convolve(IMGARRAY * data ) {
-    SDL_Surface * kernelImage = IMG_Load(FILENAME);
-    SDL_Surface * converted = SDL_ConvertSurfaceFormat(kernelImage, SDL_PIXELFORMAT_RGBA8888, 0);
+    SDL_Surface * kernelImage = IMG_Load(KERNELNAME);
+    const SDL_Surface * converted = SDL_ConvertSurfaceFormat(kernelImage, SDL_PIXELFORMAT_RGBA8888, 0);
     SDL_FreeSurface(kernelImage);
-    //auto kernel = surfaceToArray(kernelImage);
+    IMGARRAY kernel;
+    surfaceToArray(converted,&kernel);
+    fullTransform(&kernel);
+
+    for (int i = 0; i < SIZE2; ++i) {
+        constexpr auto correction = 0.075f;
+        data->at(i) *= kernel[i] * correction;
+    }
 }
 
 
@@ -348,10 +399,8 @@ int main()
     surfaceToArray(converted,&transformedArray);
     barChart.cacheTexture(renderer,&transformedArray);
     SDL_FreeSurface(converted);
-    //auto transformedArray = complexArray;
-    fft(&transformedArray);
-    rowsToColumns(&transformedArray);
-    fft(&transformedArray);
+    fullTransform(&transformedArray);
+    //convolve(&transformedArray);
 
 
     float scale = 0.01f;
@@ -371,6 +420,7 @@ int main()
     labels->add("Controls:",0,512 + 256);
     labels->add("S: Enter Scale Factor",0,512+256 + 16);
     labels->add("I: Inverse Fourier Transform",0,512 + 256 + 32);
+    labels->add("C: Convolution Blur",0,512 + 256 + 48);
 
     bool running =true;
     while (running) {
@@ -379,8 +429,6 @@ int main()
             if (event.type == SDL_QUIT) {
                 running = false;
                 IMG_SavePNG(transformedSurface, "output/output.png");
-
-
                 Uint32 formatEnum = SDL_GetWindowPixelFormat(window);
                 SDL_Surface * screenShot = SDL_CreateRGBSurfaceWithFormat(0, WINDOW_WIDTH, WINDOW_HEIGHT, 32, formatEnum);
                 SDL_RenderReadPixels(renderer,NULL,formatEnum,screenShot->pixels,screenShot->pitch);
@@ -393,17 +441,25 @@ int main()
                         cout << "Enter Scale for Display: " << endl;
                         cin >> scale;
                         SDL_FreeSurface(transformedSurface);
-                        transformedSurface = fftShift(&transformedArray, scale);
+                        transformedSurface = arrayToSurface(&transformedArray, scale);
                         SDL_DestroyTexture(transformedTexture);
                         transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
                         break;
                     case SDLK_i:
                         cout << "Inverting Transformed image" << endl;
-                        transformData(&transformedArray,true);
+                        fft(&transformedArray,true);
                         rowsToColumns(&transformedArray);
-                        transformData(&transformedArray,true);
+                        fft(&transformedArray,true);
                         SDL_FreeSurface(transformedSurface);
                         transformedSurface = arrayToSurface(&transformedArray, 1);
+                        SDL_DestroyTexture(transformedTexture);
+                        transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
+                        break;
+                    case SDLK_c:
+                        cout << "Performing Convolution" << endl;
+                        convolve(&transformedArray);
+                        SDL_FreeSurface(transformedSurface);
+                        transformedSurface = fftShift(&transformedArray, scale);
                         SDL_DestroyTexture(transformedTexture);
                         transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
                 }
