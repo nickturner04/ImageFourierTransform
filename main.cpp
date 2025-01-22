@@ -9,7 +9,7 @@
 using namespace std;
 
 #define FILENAME "resources/cat.png"
-#define KERNELNAME "resources/kernel/box.png"
+#define KERNELNAME "resources/kernel/box2invert.png"
 #define SIZE 512
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
@@ -312,6 +312,28 @@ SDL_Surface * arrayToSurface(const array<complex<float>,SIZE2> * data, const flo
     return surface;
 
 }
+float norm(const float x, const float l, const float h) {
+    return (x - l) / (h - l);
+}
+SDL_Surface * arrayToSurfaceNorm(const array<complex<float>,SIZE2> * data) {
+    float hi = FLT_MIN;
+    float lo = FLT_MAX;
+    for (int i = 0; i < SIZE2; ++i) {
+        const float rawColor = fabs(data->at(i));
+        if(rawColor > hi) hi = rawColor;
+        if(rawColor < lo) lo = rawColor;
+
+    }
+
+
+    SDL_Surface * surface = SDL_CreateRGBSurfaceWithFormat(0, SIZE, SIZE, 32, SDL_PIXELFORMAT_ARGB8888);
+    for (int i = 0; i < SIZE2; ++i) {
+        const float rawColor = fabs(data->at(i));
+        setPixel(surface,i,1 - norm(rawColor,hi,lo));
+    }
+    return surface;
+
+}
 
 inline float getRawColor(const IMGARRAY * src, const int x, const int y) {
     return fabs(src->at(y * SIZE + x));
@@ -451,7 +473,7 @@ int main()
                         rowsToColumns(&transformedArray);
                         fft(&transformedArray,true);
                         SDL_FreeSurface(transformedSurface);
-                        transformedSurface = arrayToSurface(&transformedArray, 1);
+                        transformedSurface = arrayToSurfaceNorm(&transformedArray);
                         SDL_DestroyTexture(transformedTexture);
                         transformedTexture = SDL_CreateTextureFromSurface(renderer, transformedSurface);
                         break;
