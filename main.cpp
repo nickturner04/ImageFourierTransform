@@ -1,5 +1,4 @@
 #include <array>
-#include <complex.h>
 #include <complex>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -9,7 +8,7 @@
 using namespace std;
 
 #define FILENAME "resources/cat.png"
-#define KERNELNAME "resources/kernel/box2invert.png"
+#define KERNELNAME "resources/kernel/gaussian.png"
 #define SIZE 512
 #define WINDOW_WIDTH 1024
 #define WINDOW_HEIGHT 1024
@@ -232,7 +231,6 @@ void fft(IMGARRAY * data, const bool invert = false) {
         else {
             tRow = fftRow(row);
         }
-        //const auto tRow = invert ? fftiRow(row) : fftRow(row);
 
         copy(tRow.data(),tRow.data() + SIZE,data->data() + i * SIZE);
 
@@ -312,10 +310,12 @@ SDL_Surface * arrayToSurface(const array<complex<float>,SIZE2> * data, const flo
     return surface;
 
 }
+//remap a value to [0,1] space
 float norm(const float x, const float l, const float h) {
     return (x - l) / (h - l);
 }
 SDL_Surface * arrayToSurfaceNorm(const array<complex<float>,SIZE2> * data) {
+    //Find Upper and Lower Bound
     float hi = FLT_MIN;
     float lo = FLT_MAX;
     for (int i = 0; i < SIZE2; ++i) {
@@ -329,10 +329,10 @@ SDL_Surface * arrayToSurfaceNorm(const array<complex<float>,SIZE2> * data) {
     SDL_Surface * surface = SDL_CreateRGBSurfaceWithFormat(0, SIZE, SIZE, 32, SDL_PIXELFORMAT_ARGB8888);
     for (int i = 0; i < SIZE2; ++i) {
         const float rawColor = fabs(data->at(i));
+        //Set pixel to the remapped value
         setPixel(surface,i,1 - norm(rawColor,hi,lo));
     }
     return surface;
-
 }
 
 inline float getRawColor(const IMGARRAY * src, const int x, const int y) {
