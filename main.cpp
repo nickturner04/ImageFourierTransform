@@ -26,14 +26,14 @@ struct Label {
     int x;
     int y;
 
-    void draw(SDL_Renderer * renderer ) {
-        SDL_Rect rect = {x,y,charSize*length,charSize};
+    void draw(SDL_Renderer * renderer ) const {
+        const SDL_Rect rect = {x,y,charSize*length,charSize};
         SDL_RenderCopy(renderer,texture,nullptr,&rect);
     }
 
     static Label create(SDL_Renderer * renderer ,const char *text, int x, int y) {
-        auto surf = TTF_RenderText_Solid(gFont,text,{255,0,0,255});
-        auto texture = SDL_CreateTextureFromSurface(renderer, surf);
+        const auto surf = TTF_RenderText_Solid(gFont,text,{255,0,0,255});
+        const auto texture = SDL_CreateTextureFromSurface(renderer, surf);
         return {texture,16,static_cast<int>(strlen(text)),x,y};
     }
 };
@@ -65,7 +65,7 @@ struct BarChart {
     SDL_FRect displayRect;
     SDL_Texture * texture = nullptr;
 
-    void draw(SDL_Renderer* renderer, const array<complex<float>,SIZE2> * data, float scale = 1.f) {
+    void draw(SDL_Renderer* renderer, const array<complex<float>,SIZE2> * data, float scale = 1.f) const {
         const auto n = data->size();
         //Draw Background
         const SDL_FRect rectangle = {position.x,position.y,barWidth * n,height};
@@ -111,7 +111,7 @@ struct BarChart {
     }
 };
 
-
+//Slow discrete Fourier Transform
 void transformRow(array<complex<float>,SIZE2> * pixels, const int y, const bool invert = false) {
     const auto e_complex = complex<float>(M_E, 0);
     complex<float> i_complex = - complex<float>(0, 1);
@@ -134,7 +134,7 @@ void transformRow(array<complex<float>,SIZE2> * pixels, const int y, const bool 
 
     //Use the data from the copied row to modify the original row in place
     for (int k = 0; k < N ; ++k) {
-        complex<float> total = complex<float>(0, 0);
+        auto total = complex<float>(0, 0);
         for (int n = 0; n < N; ++n) {
 
             auto Xn = X.at(n);
@@ -146,13 +146,12 @@ void transformRow(array<complex<float>,SIZE2> * pixels, const int y, const bool 
         pixels->at(SIZE * y + k) = total * scale;
     }
 }
-
+//Fast fourier transform, replaces transformRow
 ROWVEC fftRow(ROWVEC row) {
-
     const auto n = row.size();
     if(n == 1) return row;
     const auto half = n / 2;
-    complex<float> i_complex = - complex<float>(0, 1);
+    const complex<float> i_complex = - complex<float>(0, 1);
 
 
     const complex<float> o = pow(E_COMPLEX, (2.f * M_PIf32 * i_complex) / static_cast<float>(n));
@@ -180,14 +179,13 @@ ROWVEC fftRow(ROWVEC row) {
 
     return transform;
 }
-
+//Inverse transform a row, note: scaling has to be done after this function has finished
 ROWVEC fftiRow(ROWVEC row) {
 
     const auto n = row.size();
     if(n == 1) return row;
     const auto half = n / 2;
-    complex<float> i_complex = complex<float>(0, 1);
-    const auto scale = 1.f / static_cast<float>(n);
+    const auto i_complex = complex<float>(0, 1);
 
 
     const complex<float> o = pow(E_COMPLEX, (2.f * M_PIf32 * i_complex) / static_cast<float>(n));
@@ -219,11 +217,12 @@ ROWVEC fftiRow(ROWVEC row) {
 void fft(IMGARRAY * data, const bool invert = false) {
     for (int i = 0; i < SIZE; ++i) {
         const auto start = data->data() + i * SIZE;
-        ROWVEC row(start,start + SIZE);
+        const ROWVEC row(start,start + SIZE);
 
         ROWVEC tRow;
         if(invert) {
             tRow = fftiRow(row);
+            //Apply scale factor to the row
             for (auto & j : tRow) {
                 j *= 1.f/ static_cast<float>(SIZE);
             }
@@ -231,7 +230,7 @@ void fft(IMGARRAY * data, const bool invert = false) {
         else {
             tRow = fftRow(row);
         }
-
+        //Copy row data back to the original array
         copy(tRow.data(),tRow.data() + SIZE,data->data() + i * SIZE);
 
         cout << "Transformed Row: " << i << "/" << SIZE << "\n";
@@ -282,14 +281,14 @@ void surfaceToArray(const SDL_Surface * surface, IMGARRAY * data) {
         data->at(i) = complex<float>(colorToFloat(r), 0);
     }
 }
-
+//Set Pixel using 1D coordinates
 void setPixel(const SDL_Surface * surface, const int i, const float rawColor) {
     const auto pixel = static_cast<Uint32 *>(surface->pixels + i * surface->format->BytesPerPixel);
     const Uint8 color = floatToColor(rawColor);
 
     *pixel = SDL_MapRGB(surface->format,color,color,color);
 }
-
+//Set Pixel using 2D coordinates
 void setPixel(const SDL_Surface * surface, const int x, const int y, const float rawColor) {
     const auto pixel = static_cast<Uint32 *>(surface->pixels + y * surface->pitch + x * surface->format->BytesPerPixel);
     const Uint8 color = floatToColor(rawColor);
@@ -374,7 +373,6 @@ SDL_Surface * fftShift(const IMGARRAY * src, const float scale = 1.f) {
             //dst->at(j * SIZE + i) = src->at((j - l) * SIZE + (i - l));
         }
     }
-
     return surface;
 }
 
@@ -387,8 +385,7 @@ void convolve(IMGARRAY * data ) {
     fullTransform(&kernel);
 
     for (int i = 0; i < SIZE2; ++i) {
-        constexpr auto correction = 0.075f;
-        data->at(i) *= kernel[i] * correction;
+        data->at(i) *= kernel[i];
     }
 }
 
@@ -417,6 +414,7 @@ int main()
     //turn surface into a texture in order to display it on screen
     SDL_Texture * texture = SDL_CreateTextureFromSurface(renderer, converted);
 
+    //Apply initial fourier transform here
     IMGARRAY transformedArray;
     surfaceToArray(converted,&transformedArray);
     barChart.cacheTexture(renderer,&transformedArray);
